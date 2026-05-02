@@ -1,4 +1,4 @@
-name: LumiROM Tools
+name: LumiROM Tools (upload file to GoFile)
 
 on:
   workflow_dispatch:
