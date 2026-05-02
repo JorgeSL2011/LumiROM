@@ -233,13 +233,11 @@ jobs:
         source scripts/zip_creation.sh
         FLASHABLE_ZIP_CREATION
 
-    - name: Upload ROM to Hugging Face
-      env:
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        HF_XET_HIGH_PERFORMANCE: "1"
+    - name: Upload ROM to GoFile
       run: |
-        DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-        hf buckets sync ./template hf://buckets/Zears14/lumifiles/out/$DATE/ --include "*.zip"
+      ZIP_FILE=$(find ./template -name "*.zip" | head -1)
+      RESPONSE=$(curl -s -F "file=@${ZIP_FILE}" https://store1.gofile.io/uploadFile)
+      echo "Download link: $(echo $RESPONSE | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['data']['downloadPage'])")"
 
     - name: Cleanup
       run: |
