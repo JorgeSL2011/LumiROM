@@ -14,6 +14,8 @@ jobs:
           fetch-depth: 0
       - name: Sync upstream
         run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
           git remote add upstream https://github.com/Luminous418/LumiROM.git
           git fetch upstream
           git merge upstream/OneUI8.5 --no-edit
