@@ -1,8 +1,12 @@
 name: Sync fork with upstream
 on:
   schedule:
-    - cron: '0 6 * * 1'  # Cada lunes a las 6am UTC
+    - cron: '0 6 * * 1'
   workflow_dispatch:
+
+permissions:
+  contents: write
+  workflows: write
 
 jobs:
   sync:
