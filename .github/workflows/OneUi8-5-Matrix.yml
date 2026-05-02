@@ -1,12 +1,8 @@
-name: LumiROM Tools
+name: LumiROM Tools for all devices
 
 on:
   workflow_dispatch:
     inputs:
-      STOCK_DEVICE:
-        description: "Put the Model of your phone, remember it starts with SM-"
-        required: true
-        default: "SM-A325F"
       USE_MODS:
         description: "Add mods to the ROM, 'Yes' to add, 'No' to don't add"
         required: true
@@ -35,6 +31,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false 
+      matrix:
+        device: [SM-A325F, SM-A325M, SM-M325F, SM-A225F, SM-E225F, SM-A226B]
       
     steps:
 
@@ -76,7 +76,7 @@ jobs:
     - name: Set build environment
       shell: bash
       run: |
-        echo "STOCK_DEVICE=${{ github.event.inputs.STOCK_DEVICE }}" >> $GITHUB_ENV
+        echo "STOCK_DEVICE=${{ matrix.device }}" >> $GITHUB_ENV
         echo "USE_UI_8_TETHERING_APEX=${{ github.event.inputs.USE_UI_8_TETHERING_APEX }}" >> $GITHUB_ENV
         echo "USE_MODS=${{ github.event.inputs.USE_MODS }}" >> $GITHUB_ENV
         echo "TARGET_DEVICE=${{ github.event.inputs.TARGET_DEVICE }}" >> $GITHUB_ENV
@@ -117,7 +117,7 @@ jobs:
         source scripts/FW.sh
         MERGE_OTA "FIRMWARE" "OTA"
 
-    - name: Download vendor for ${{ github.event.inputs.STOCK_DEVICE }}
+    - name: Download vendor for ${{ matrix.device }}
       shell: bash
       run: |
         source scripts/FW.sh
@@ -230,11 +230,12 @@ jobs:
         source scripts/zip_creation.sh
         FLASHABLE_ZIP_CREATION
 
-    - name: Upload ROM to GoFile
+    - name: Upload ROM to Hugging Face
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_XET_HIGH_PERFORMANCE: "1"
       run: |
-       ZIP_FILE=$(find ./template -name "*.zip" | head -1)
-       RESPONSE=$(curl -s -F "file=@${ZIP_FILE}" https://store1.gofile.io/uploadFile)
-       echo "Download link: $(echo $RESPONSE | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['data']['downloadPage'])")"
+        hf buckets sync ./template hf://buckets/LuminousJD418/LumiROM/ROMs/$LUMIROM_VERSION/$STOCK_DEVICE/ --include "*.zip"
 
     - name: Cleanup
       run: |
