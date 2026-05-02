@@ -16,5 +16,5 @@ jobs:
         run: |
           git remote add upstream https://github.com/Luminous418/LumiROM.git
           git fetch upstream
-          git merge upstream/main --no-edit
-          git push origin main
+          git merge upstream/OneUI8.5 --no-edit
+          git push origin OneUI8.5
