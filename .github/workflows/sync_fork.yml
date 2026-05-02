@@ -1,0 +1,20 @@
+name: Sync fork with upstream
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Cada lunes a las 6am UTC
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - name: Sync upstream
+        run: |
+          git remote add upstream https://github.com/USUARIO_ORIGINAL/REPO_ORIGINAL.git
+          git fetch upstream
+          git merge upstream/main --no-edit
+          git push origin main
