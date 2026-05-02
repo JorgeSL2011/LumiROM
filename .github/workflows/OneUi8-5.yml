@@ -235,9 +235,9 @@ jobs:
 
     - name: Upload ROM to GoFile
       run: |
-      ZIP_FILE=$(find ./template -name "*.zip" | head -1)
-      RESPONSE=$(curl -s -F "file=@${ZIP_FILE}" https://store1.gofile.io/uploadFile)
-      echo "Download link: $(echo $RESPONSE | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['data']['downloadPage'])")"
+       ZIP_FILE=$(find ./template -name "*.zip" | head -1)
+       RESPONSE=$(curl -s -F "file=@${ZIP_FILE}" https://store1.gofile.io/uploadFile)
+       echo "Download link: $(echo $RESPONSE | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['data']['downloadPage'])")"
 
     - name: Cleanup
       run: |
