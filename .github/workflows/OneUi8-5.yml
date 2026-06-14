@@ -99,15 +99,6 @@ jobs:
         source "$DEVICES_DIR/$STOCK_DEVICE/config"
         DOWNLOAD_FIRMWARE "FIRMWARE" "${{ github.event.inputs.FIRMWARE_URL }}"
 
-    - name: Download OTA
-      run: |
-        source scripts/FW.sh
-        DOWNLOAD_OTA "OTA"
-
-    - name: Merge OTA and FW
-      run: |
-        source scripts/FW.sh
-        MERGE_OTA "FIRMWARE" "OTA"
 
     - name: Download vendor for ${{ github.event.inputs.STOCK_DEVICE }}
       shell: bash
