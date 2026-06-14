@@ -19,18 +19,10 @@ on:
         description: "TARGET_DEVICE_MODEL."
         required: true
         default: "SM-A346B"
-      TARGET_DEVICE_CSC:
-        description: "TARGET_DEVICE_CSC."
+      FIRMWARE_URL:
+        description: "a link to download firmware (testing)"
         required: true
-        default: "EUX"
-      TARGET_DEVICE_IMEI:
-        description: "TARGET_DEVICE_IMEI."
-        required: true
-        default: "351648442869815"
-      TARGET_FW_VERSION:
-        description: "Any specific firmware (optional)"
-        required: false
-        default: "A346BXXSFEZC7/A346BOXMFEZC7/A346BXXSFEZC7/A346BXXSFEZC7"
+        default: "Nothing"
 
 jobs:
   build:
@@ -105,7 +97,7 @@ jobs:
       run: |
         source scripts/FW.sh
         source "$DEVICES_DIR/$STOCK_DEVICE/config"
-        DOWNLOAD_FIRMWARE "${{ github.event.inputs.TARGET_DEVICE }}" "${{ github.event.inputs.TARGET_DEVICE_CSC }}" "${{ github.event.inputs.TARGET_DEVICE_IMEI }}" "FIRMWARE" "${{ github.event.inputs.TARGET_FW_VERSION }}"
+        DOWNLOAD_FIRMWARE "FIRMWARE" "${{ github.event.inputs.FIRMWARE_URL }}"
 
     - name: Download OTA
       run: |
