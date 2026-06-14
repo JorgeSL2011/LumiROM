@@ -1,16 +1,19 @@
 #!/bin/bash
 
 DOWNLOAD_FIRMWARE() {
-    if [ "$#" -lt 4 ]; then
-        echo -e "Usage: ${FUNCNAME[0]} <MODEL> <CSC> <IMEI> <DOWNLOAD_DIRECTORY> [GOFILE_DIRECT_URL]"
+    if [ "$#" -lt 2 ]; then
+        echo -e "Usage: ${FUNCNAME[0]} <DOWNLOAD_DIRECTORY> <GOFILE_DIRECT_URL>"
         return 1
     fi
 
-    local MODEL="$1"
-    local CSC="$2"
-    local IMEI="$3"
-    local DOWN_DIR="${4}/$MODEL"
-    local GOFILE_URL="${5:-}"
+    local DOWN_DIR="$1"
+    local GOFILE_URL="$2"
+    
+    # Extracción automática del modelo basado en el archivo de la URL
+    local FILE_NAME="${GOFILE_URL##*/}"
+    FILE_NAME="${FILE_NAME%%\?*}"
+    local MODEL="${FILE_NAME%.zip}"
+    DOWN_DIR="${DOWN_DIR}/$MODEL"
 
     rm -rf "$DOWN_DIR"
     mkdir -p "$DOWN_DIR"
@@ -18,29 +21,22 @@ DOWNLOAD_FIRMWARE() {
     echo -e "======================================"
     echo -e "   GitHub Actions FW Downloader (GoFile) "
     echo -e "======================================"
-    echo -e "MODEL: $MODEL | CSC: $CSC"
+    echo -e "DETECTED MODEL: $MODEL"
 
     # --- Exportar variables críticas para los siguientes steps de GitHub Actions ---
     export TARGET_DEVICE="$MODEL"
     if [ -n "$GITHUB_ENV" ]; then
         echo "TARGET_DEVICE=$MODEL" >> "$GITHUB_ENV"
-        echo "FW_ZIP_PATH=${DOWN_DIR}/${MODEL}.zip" >> "$GITHUB_ENV"
+        echo "FW_ZIP_PATH=${DOWN_DIR}/${FILE_NAME}" >> "$GITHUB_ENV"
     fi
 
     # --- Descarga directa desde GoFile ---
-    if [ -n "$GOFILE_URL" ]; then
-        echo -e "- 📥 Downloading full firmware via aria2c..."
-        
-        # En GitHub Actions, aria2c aprovecha al máximo el ancho de banda del runner
-        aria2c -x 16 -s 16 -k 1M -d "$DOWN_DIR" -o "${MODEL}.zip" \
-            --allow-overwrite=true --auto-file-renaming=false "$GOFILE_URL"
-        
-        if [ $? -ne 0 ]; then
-            echo -e "- ⛔️ GoFile Download failed. Check if the link has expired."
-            return 1
-        fi
-    else
-        echo -e "- ⛔️ Error: No GoFile link provided as 5th argument."
+    echo -e "- 📥 Downloading full firmware via aria2c..."
+    aria2c -x 16 -s 16 -k 1M -d "$DOWN_DIR" -o "$FILE_NAME" \
+        --allow-overwrite=true --auto-file-renaming=false "$GOFILE_URL"
+    
+    if [ $? -ne 0 ]; then
+        echo -e "- ⛔️ GoFile Download failed. Check if the link has expired."
         return 1
     fi
 
@@ -49,10 +45,10 @@ DOWNLOAD_FIRMWARE() {
     find "$DOWN_DIR" -name "*.aria2" -exec rm -f {} +
 
     # --- Verificación final de la descarga ---
-    if [ -f "${DOWN_DIR}/${MODEL}.zip" ]; then
-        local file_size=$(du -m "${DOWN_DIR}/${MODEL}.zip" | cut -f1)
+    if [ -f "${DOWN_DIR}/${FILE_NAME}" ]; then
+        local file_size=$(du -m "${DOWN_DIR}/${FILE_NAME}" | cut -f1)
         echo -e "- ✅ Firmware downloaded and ready! Size: ${file_size} MB"
-        echo -e "- Saved to: ${DOWN_DIR}/${MODEL}.zip"
+        echo -e "- Saved to: ${DOWN_DIR}/${FILE_NAME}"
     else
         echo -e "- ⛔️ Firmware file was not found."
         return 1
