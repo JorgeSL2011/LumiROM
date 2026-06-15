@@ -9,11 +9,6 @@ DOWNLOAD_FIRMWARE() {
     local BASE_DIR="$1"
     local GOFILE_URL="$2"
     
-    # 1. Limpieza estricta de la URL de GoFile
-    local CLEAN_URL="${GOFILE_URL%%\?*}"
-    local FILE_NAME="${CLEAN_URL##*/}"
-    
-    # 2. Forzar que el modelo sea el STOCK_DEVICE para evitar nombres corruptos
     local MODEL="$STOCK_DEVICE"
     local DOWN_DIR="${BASE_DIR}/${MODEL}"
     
@@ -25,9 +20,9 @@ DOWNLOAD_FIRMWARE() {
     echo -e "========================================"
     echo -e "FIRM_DIR: $BASE_DIR"
     echo -e "TARGET MODEL: $MODEL"
-    echo -e "FILE NAME: super.img"
+    echo -e "FILE SOURCE: Direct super.img Link"
 
-    # Exportar variables globales para los siguientes pasos de tu workflow
+    # Exportar variables globales para los siguientes pasos del workflow
     export TARGET_DEVICE="$MODEL"
     if [ -n "$GITHUB_ENV" ]; then
         echo "TARGET_DEVICE=${MODEL}" >> "$GITHUB_ENV"
@@ -36,12 +31,12 @@ DOWNLOAD_FIRMWARE() {
 
     # --- Descarga directa desde GoFile ---
     echo -e "- 📥 Downloading super.img via aria2c..."
-    # Forzamos que se guarde siempre como super.img para que sea fácil de rastrear
+    # Forzamos el nombre de salida a super.img sin importar los IDs de la URL
     aria2c -x 16 -s 16 -k 1M -d "$DOWN_DIR" -o "super.img" \
         --allow-overwrite=true --auto-file-renaming=false "$GOFILE_URL"
     
     if [ $? -ne 0 ]; then
-        echo -e "- ⛔️ GoFile Download failed."
+        echo -e "- ⛔️ GoFile Download failed. Verify if the direct token expired."
         return 1
     fi
 
@@ -50,6 +45,7 @@ DOWNLOAD_FIRMWARE() {
     find "$DOWN_DIR" -name "*.aria2" -exec rm -f {} +
     echo -e "- ✅ Download completed successfully."
 }
+
 
 DOWNLOAD_VENDOR() {
     if [ "$#" -lt 1 ]; then
@@ -68,6 +64,7 @@ DOWNLOAD_VENDOR() {
     find "$DOWN_DIR" -name "*.aria2" -exec rm -f {} +
     echo "- ✅ Vendor downloaded."
 }
+
 
 EXTRACT_FIRMWARE() {
     if [ "$#" -ne 1 ]; then
@@ -94,7 +91,7 @@ EXTRACT_FIRMWARE() {
         sudo apt-get update && sudo apt-get install -y android-sdk-libresim simg2img || true
     fi
 
-    # Convertir de Android Sparse a Raw Image por seguridad
+    # Convertir de Android Sparse a Raw Image por seguridad (exigido por lpunpack)
     if simg2img "$SUPER_FILE" "$FIRM_DIR/$MODEL/super.raw.img" 2>/dev/null; then
         echo "- ✅ Converted sparse super.img to raw."
         local READY_SUPER="$FIRM_DIR/$MODEL/super.raw.img"
@@ -106,15 +103,15 @@ EXTRACT_FIRMWARE() {
     # Crear los directorios destino planos que el config del script espera encontrar
     mkdir -p "$FIRM_DIR/system" "$FIRM_DIR/vendor" "$FIRM_DIR/product" "$FIRM_DIR/system_ext" "$FIRM_DIR/odm"
 
-    # Desempaquetar el super usando lpunpack
+    # Desempaquetar el super usando lpunpack directamente en la raíz de FIRMWARE
     echo "- 🔓 Unpacking partitions via lpunpack..."
     lpunpack "$READY_SUPER" "$FIRM_DIR/"
 
-    # Limpieza inmediata para liberar espacio en el disco duro virtual de GitHub Actions
+    # Limpieza inmediata de imágenes pesadas para no saturar el almacenamiento de Actions
     rm -f "$FIRM_DIR/$MODEL/super.raw.img" 2>/dev/null || true
     rm -rf "$FIRM_DIR/$MODEL"
 
-    echo "- ✅ Extraction complete. All .img tracks generated in FIRM_DIR."
+    echo "- ✅ Extraction complete. Individual partition images generated in FIRM_DIR."
 }
 
 
