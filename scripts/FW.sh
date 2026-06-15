@@ -1,49 +1,42 @@
 #!/bin/bash
 
 DOWNLOAD_FIRMWARE() {
-    if [ "$#" -lt 2 ]; then
-        echo -e "Usage: ${FUNCNAME[0]} <DOWNLOAD_DIRECTORY> <GOFILE_DIRECT_URL>"
+    if [ "$#" -ne 1 ]; then
+        echo "Usage: ${FUNCNAME[0]} <FIRMWARE_DIRECTORY>"
         return 1
     fi
 
-    local BASE_DIR="$1"
-    local HF_URL="$2"
+    local DOWN_DIR="$1"
+    # Apuntamos al nuevo archivo particiones.zip en tu Hugging Face
+    local HF_ZIP_URL="https://huggingface.co/datasets/Jooseph2011/Firmware/resolve/main/particiones.zip?download=true"
 
-    local MODEL="$STOCK_DEVICE"
-    local DOWN_DIR="${BASE_DIR}/${MODEL}"
-
-    rm -rf "$DOWN_DIR"
+    echo "========================================"
+    echo "  LumiROM Logical Partitions Receiver   "
+    echo "========================================"
+    
     mkdir -p "$DOWN_DIR"
-
-    echo -e "========================================"
-    echo -e "   GitHub Actions FW Downloader (GoFile) "
-    echo -e "========================================"
-    echo -e "FIRM_DIR: $BASE_DIR"
-    echo -e "TARGET MODEL: $MODEL"
-    echo -e "FILE SOURCE: Direct super.img Link"
-
-    # Exportar variables globales para los siguientes pasos del workflow
-    export TARGET_DEVICE="$MODEL"
-    if [ -n "$GITHUB_ENV" ]; then
-        echo "TARGET_DEVICE=${MODEL}" >> "$GITHUB_ENV"
-        echo "FW_ZIP_PATH=${DOWN_DIR}/super.img" >> "$GITHUB_ENV"
+    
+    echo "- 📥 Descargando particiones.zip comprimido..."
+    if command -v aria2c &> /dev/null; then
+        aria2c -x 16 -s 16 -k 5M -d "$DOWN_DIR" -o "particiones.zip" --allow-overwrite=true "$HF_ZIP_URL"
+    else
+        curl -L "$HF_ZIP_URL" -o "$DOWN_DIR/particiones.zip"
     fi
 
-    # --- Descarga directa desde GoFile ---
-    echo -e "- 📥 Downloading super.img via curl..."
-    # Forzamos el nombre de salida a super.img sin importar los IDs de la URL
-    # Cambiar el aria2c por esto en tu DOWNLOAD_FIRMWARE:
-	curl -L "$HF_URL" -o "$DOWN_DIR/super.img"
-
-    if [ $? -ne 0 ]; then
-        echo -e "- ⛔️ GoFile Download failed. Verify if the direct token expired."
-        return 1
+    # --- EXTRACCIÓN DIRECTA DE LOS .IMG SUELTOS ---
+    if [ -f "$DOWN_DIR/particiones.zip" ]; then
+        echo "- 🗜️ Descomprimiendo imágenes lógicas (.img) directamente en $DOWN_DIR..."
+        
+        # Extraemos todos los .img sueltos directo en la carpeta base de compilación
+        7z x "$DOWN_DIR/particiones.zip" -o"$DOWN_DIR" -y > /dev/null
+        rm -f "$DOWN_DIR/particiones.zip"
+        
+        echo "📋 Contenido listo para el port en $DOWN_DIR/:"
+        ls -lh "$DOWN_DIR"/*.img
+    else
+        echo "❌ Error crítico: No se pudo descargar el archivo particiones.zip"
+        exit 1
     fi
-
-    # Limpieza de archivos de control de aria2
-    wait
-    find "$DOWN_DIR" -name "*.aria2" -exec rm -f {} +
-    echo -e "- ✅ Download completed successfully."
 }
 
 
