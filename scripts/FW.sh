@@ -6,44 +6,38 @@ DOWNLOAD_FIRMWARE() {
         return 1
     fi
 
-    # Usamos rutas absolutas basadas en lo que le pases por argumento (FIRM_DIR)
     local BASE_DIR="$1"
     local GOFILE_URL="$2"
     
-    # 1. Limpieza rigurosa de la URL para evitar el bug "otIith"
+    # 1. Limpieza estricta de la URL de GoFile
     local CLEAN_URL="${GOFILE_URL%%\?*}"
     local FILE_NAME="${CLEAN_URL##*/}"
     
-    # 2. Forzar el nombre del modelo basado en el STOCK_DEVICE si la URL viene corrupta
+    # 2. Forzar que el modelo sea el STOCK_DEVICE para evitar nombres corruptos
     local MODEL="$STOCK_DEVICE"
-    if [[ -n "$FILE_NAME" && "$FILE_NAME" == *"_*.zip" ]]; then
-        # Si el zip tiene el formato estándar (ej: SM-A346B.zip), extrae el modelo
-        MODEL="${FILE_NAME%.zip}"
-    fi
-
-    # Definimos la ruta de descarga exacta bajo el directorio absoluto
     local DOWN_DIR="${BASE_DIR}/${MODEL}"
     
     rm -rf "$DOWN_DIR"
     mkdir -p "$DOWN_DIR"
 
     echo -e "========================================"
-    echo -e "   GitHub Actions FW Downloader & Unzip "
+    echo -e "   GitHub Actions FW Downloader (GoFile) "
     echo -e "========================================"
     echo -e "FIRM_DIR: $BASE_DIR"
     echo -e "TARGET MODEL: $MODEL"
-    echo -e "SAVING TO: ${DOWN_DIR}/${MODEL}.zip"
+    echo -e "FILE NAME: super.img"
 
-    # Exportar variables globales corregidas con rutas absolutas para el runner
+    # Exportar variables globales para los siguientes pasos de tu workflow
     export TARGET_DEVICE="$MODEL"
     if [ -n "$GITHUB_ENV" ]; then
         echo "TARGET_DEVICE=${MODEL}" >> "$GITHUB_ENV"
-        echo "FW_ZIP_PATH=${DOWN_DIR}/${MODEL}.zip" >> "$GITHUB_ENV"
+        echo "FW_ZIP_PATH=${DOWN_DIR}/super.img" >> "$GITHUB_ENV"
     fi
 
     # --- Descarga directa desde GoFile ---
-    echo -e "- 📥 Downloading full firmware via aria2c..."
-    aria2c -x 16 -s 16 -k 1M -d "$DOWN_DIR" -o "${MODEL}.zip" \
+    echo -e "- 📥 Downloading super.img via aria2c..."
+    # Forzamos que se guarde siempre como super.img para que sea fácil de rastrear
+    aria2c -x 16 -s 16 -k 1M -d "$DOWN_DIR" -o "super.img" \
         --allow-overwrite=true --auto-file-renaming=false "$GOFILE_URL"
     
     if [ $? -ne 0 ]; then
@@ -51,22 +45,10 @@ DOWNLOAD_FIRMWARE() {
         return 1
     fi
 
-    # Limpieza de archivos temporales de aria2
+    # Limpieza de archivos de control de aria2
     wait
     find "$DOWN_DIR" -name "*.aria2" -exec rm -f {} +
-
-    # --- Extracción Plana Directa en $FIRM_DIR ---
-    echo -e "- 📦 Extracting firmware directly into absolute FIRM_DIR..."
-    unzip -q "${DOWN_DIR}/${MODEL}.zip" -d "${BASE_DIR}/" 2>/dev/null || true
-
-    # Si la extracción creó carpetas anidadas por accidente, las aplanamos al nivel de $BASE_DIR
-    if [ -d "${BASE_DIR}/system/system" ]; then
-        echo -e "- ⚠️ Double system directory detected! Fixing paths..."
-        mv "${BASE_DIR}/system/system/"* "${BASE_DIR}/system/" 2>/dev/null || true
-        rm -rf "${BASE_DIR}/system/system"
-    fi
-
-    echo -e "- ✅ Environment successfully aligned with FIRM_DIR."
+    echo -e "- ✅ Download completed successfully."
 }
 
 DOWNLOAD_VENDOR() {
@@ -76,13 +58,15 @@ DOWNLOAD_VENDOR() {
     fi
 
     local DOWN_DIR="${1}"
+    mkdir -p "$DOWN_DIR"
 
-    echo "Downloading vendor for ${STOCK_DEVICE}"
-    aria2c -x 16 -k 1M -d "$DOWN_DIR" -o "vendor.img" --allow-overwrite=true --auto-file-renaming=false "https://github.com/JorgeSL2011/VendorsForMTKG80/releases/download/${STOCK_DEVICE}_lastest/vendor.img" &
+    echo "Downloading vendor for ${STOCK_DEVICE}..."
+    aria2c -x 16 -s 16 -k 1M -d "$DOWN_DIR" -o "vendor.img" \
+        --allow-overwrite=true --auto-file-renaming=false "https://github.com/JorgeSL2011/VendorsForMTKG80/releases/download/${STOCK_DEVICE}_lastest/vendor.img"
     
-    # Cleanup any leftover .aria2 control files after everything finishes
     wait
     find "$DOWN_DIR" -name "*.aria2" -exec rm -f {} +
+    echo "- ✅ Vendor downloaded."
 }
 
 EXTRACT_FIRMWARE() {
@@ -92,21 +76,45 @@ EXTRACT_FIRMWARE() {
     fi
 
     local FIRM_DIR="$1"
-    local FIRM_FILE="$FIRM_DIR/BASE_FW.zip"
+    local MODEL="$STOCK_DEVICE"
+    local SUPER_FILE="$FIRM_DIR/$MODEL/super.img"
 
-    echo "Extracting downloaded firmware."
+    echo "========================================"
+    echo "   Extracting Dynamic Partitions (LP)   "
+    echo "========================================"
 
-    if [ ! -f "$FIRM_FILE" ]; then
-        echo "Error: BASE_FW.zip not found in $FIRM_DIR"
+    if [ ! -f "$SUPER_FILE" ]; then
+        echo "⛔️ Error: super.img not found in $FIRM_DIR/$MODEL/"
         return 1
     fi
 
-    echo "- Extracting zip file."
-    find "$FIRM_DIR" -maxdepth 1 -name "*.zip" \
-        -exec 7z x -y -bd -o"$FIRM_DIR" {} \; >/dev/null 2>&1
-    rm -rf "$FIRM_DIR"/*.zip
+    # Instalar herramientas de desempaquetado de Android en el runner si faltan
+    if ! command -v lpunpack &> /dev/null; then
+        echo "- 🔧 Installing android-sdk-libresim (simg2img/lpunpack)..."
+        sudo apt-get update && sudo apt-get install -y android-sdk-libresim simg2img || true
+    fi
 
-    rm -f "$FIRM_FILE"
+    # Convertir de Android Sparse a Raw Image por seguridad
+    if simg2img "$SUPER_FILE" "$FIRM_DIR/$MODEL/super.raw.img" 2>/dev/null; then
+        echo "- ✅ Converted sparse super.img to raw."
+        local READY_SUPER="$FIRM_DIR/$MODEL/super.raw.img"
+    else
+        echo "- ℹ️ super.img is already a raw image."
+        local READY_SUPER="$SUPER_FILE"
+    fi
+
+    # Crear los directorios destino planos que el config del script espera encontrar
+    mkdir -p "$FIRM_DIR/system" "$FIRM_DIR/vendor" "$FIRM_DIR/product" "$FIRM_DIR/system_ext" "$FIRM_DIR/odm"
+
+    # Desempaquetar el super usando lpunpack
+    echo "- 🔓 Unpacking partitions via lpunpack..."
+    lpunpack "$READY_SUPER" "$FIRM_DIR/"
+
+    # Limpieza inmediata para liberar espacio en el disco duro virtual de GitHub Actions
+    rm -f "$FIRM_DIR/$MODEL/super.raw.img" 2>/dev/null || true
+    rm -rf "$FIRM_DIR/$MODEL"
+
+    echo "- ✅ Extraction complete. All .img tracks generated in FIRM_DIR."
 }
 
 
