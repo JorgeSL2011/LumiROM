@@ -6,53 +6,67 @@ DOWNLOAD_FIRMWARE() {
         return 1
     fi
 
-    local DOWN_DIR="$1"
+    # Usamos rutas absolutas basadas en lo que le pases por argumento (FIRM_DIR)
+    local BASE_DIR="$1"
     local GOFILE_URL="$2"
     
-    # Extracción automática del modelo basado en el archivo de la URL
-    local FILE_NAME="${GOFILE_URL##*/}"
-    FILE_NAME="${FILE_NAME%%\?*}"
-    local MODEL="${FILE_NAME%.zip}"
-    DOWN_DIR="${DOWN_DIR}/$MODEL"
+    # 1. Limpieza rigurosa de la URL para evitar el bug "otIith"
+    local CLEAN_URL="${GOFILE_URL%%\?*}"
+    local FILE_NAME="${CLEAN_URL##*/}"
+    
+    # 2. Forzar el nombre del modelo basado en el STOCK_DEVICE si la URL viene corrupta
+    local MODEL="$STOCK_DEVICE"
+    if [[ -n "$FILE_NAME" && "$FILE_NAME" == *"_*.zip" ]]; then
+        # Si el zip tiene el formato estándar (ej: SM-A346B.zip), extrae el modelo
+        MODEL="${FILE_NAME%.zip}"
+    fi
 
+    # Definimos la ruta de descarga exacta bajo el directorio absoluto
+    local DOWN_DIR="${BASE_DIR}/${MODEL}"
+    
     rm -rf "$DOWN_DIR"
     mkdir -p "$DOWN_DIR"
 
-    echo -e "======================================"
-    echo -e "   GitHub Actions FW Downloader (GoFile) "
-    echo -e "======================================"
-    echo -e "DETECTED MODEL: $MODEL"
+    echo -e "========================================"
+    echo -e "   GitHub Actions FW Downloader & Unzip "
+    echo -e "========================================"
+    echo -e "FIRM_DIR: $BASE_DIR"
+    echo -e "TARGET MODEL: $MODEL"
+    echo -e "SAVING TO: ${DOWN_DIR}/${MODEL}.zip"
 
-    # --- Exportar variables críticas para los siguientes steps de GitHub Actions ---
+    # Exportar variables globales corregidas con rutas absolutas para el runner
     export TARGET_DEVICE="$MODEL"
     if [ -n "$GITHUB_ENV" ]; then
-        echo "TARGET_DEVICE=$MODEL" >> "$GITHUB_ENV"
-        echo "FW_ZIP_PATH=${DOWN_DIR}/${FILE_NAME}" >> "$GITHUB_ENV"
+        echo "TARGET_DEVICE=${MODEL}" >> "$GITHUB_ENV"
+        echo "FW_ZIP_PATH=${DOWN_DIR}/${MODEL}.zip" >> "$GITHUB_ENV"
     fi
 
     # --- Descarga directa desde GoFile ---
     echo -e "- 📥 Downloading full firmware via aria2c..."
-    aria2c -x 16 -s 16 -k 1M -d "$DOWN_DIR" -o "$FILE_NAME" \
+    aria2c -x 16 -s 16 -k 1M -d "$DOWN_DIR" -o "${MODEL}.zip" \
         --allow-overwrite=true --auto-file-renaming=false "$GOFILE_URL"
     
     if [ $? -ne 0 ]; then
-        echo -e "- ⛔️ GoFile Download failed. Check if the link has expired."
+        echo -e "- ⛔️ GoFile Download failed."
         return 1
     fi
 
-    # --- Limpieza de archivos de control de aria2 ---
+    # Limpieza de archivos temporales de aria2
     wait
     find "$DOWN_DIR" -name "*.aria2" -exec rm -f {} +
 
-    # --- Verificación final de la descarga ---
-    if [ -f "${DOWN_DIR}/${FILE_NAME}" ]; then
-        local file_size=$(du -m "${DOWN_DIR}/${FILE_NAME}" | cut -f1)
-        echo -e "- ✅ Firmware downloaded and ready! Size: ${file_size} MB"
-        echo -e "- Saved to: ${DOWN_DIR}/${FILE_NAME}"
-    else
-        echo -e "- ⛔️ Firmware file was not found."
-        return 1
+    # --- Extracción Plana Directa en $FIRM_DIR ---
+    echo -e "- 📦 Extracting firmware directly into absolute FIRM_DIR..."
+    unzip -q "${DOWN_DIR}/${MODEL}.zip" -d "${BASE_DIR}/" 2>/dev/null || true
+
+    # Si la extracción creó carpetas anidadas por accidente, las aplanamos al nivel de $BASE_DIR
+    if [ -d "${BASE_DIR}/system/system" ]; then
+        echo -e "- ⚠️ Double system directory detected! Fixing paths..."
+        mv "${BASE_DIR}/system/system/"* "${BASE_DIR}/system/" 2>/dev/null || true
+        rm -rf "${BASE_DIR}/system/system"
     fi
+
+    echo -e "- ✅ Environment successfully aligned with FIRM_DIR."
 }
 
 DOWNLOAD_VENDOR() {
