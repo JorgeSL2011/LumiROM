@@ -7,7 +7,7 @@ DOWNLOAD_FIRMWARE() {
     fi
 
     local BASE_DIR="$1"
-    local GOFILE_URL="$2"
+    local HF_URL="$2"
 
     local MODEL="$STOCK_DEVICE"
     local DOWN_DIR="${BASE_DIR}/${MODEL}"
@@ -33,7 +33,7 @@ DOWNLOAD_FIRMWARE() {
     echo -e "- 📥 Downloading super.img via curl..."
     # Forzamos el nombre de salida a super.img sin importar los IDs de la URL
     # Cambiar el aria2c por esto en tu DOWNLOAD_FIRMWARE:
-	curl -L -H "User-Agent: Mozilla/5.0" "$GOFILE_URL" -o "${DOWN_DIR}/super.img"
+	curl -L "$HF_URL" -o "$DOWN_DIR/super.img"
 
     if [ $? -ne 0 ]; then
         echo -e "- ⛔️ GoFile Download failed. Verify if the direct token expired."
