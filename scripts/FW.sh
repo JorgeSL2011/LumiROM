@@ -8,10 +8,10 @@ DOWNLOAD_FIRMWARE() {
 
     local BASE_DIR="$1"
     local GOFILE_URL="$2"
-    
+
     local MODEL="$STOCK_DEVICE"
     local DOWN_DIR="${BASE_DIR}/${MODEL}"
-    
+
     rm -rf "$DOWN_DIR"
     mkdir -p "$DOWN_DIR"
 
@@ -34,7 +34,7 @@ DOWNLOAD_FIRMWARE() {
     # Forzamos el nombre de salida a super.img sin importar los IDs de la URL
     aria2c -x 16 -s 16 -k 1M -d "$DOWN_DIR" -o "super.img" \
         --allow-overwrite=true --auto-file-renaming=false "$GOFILE_URL"
-    
+
     if [ $? -ne 0 ]; then
         echo -e "- ⛔️ GoFile Download failed. Verify if the direct token expired."
         return 1
@@ -59,138 +59,155 @@ DOWNLOAD_VENDOR() {
     echo "Downloading vendor for ${STOCK_DEVICE}..."
     aria2c -x 16 -s 16 -k 1M -d "$DOWN_DIR" -o "vendor.img" \
         --allow-overwrite=true --auto-file-renaming=false "https://github.com/JorgeSL2011/VendorsForMTKG80/releases/download/${STOCK_DEVICE}_lastest/vendor.img"
-    
+
     wait
     find "$DOWN_DIR" -name "*.aria2" -exec rm -f {} +
     echo "- ✅ Vendor downloaded."
 }
 
 
-PREPARE_PARTITIONS() {
+EXTRACT_FIRMWARE() {
     if [ "$#" -ne 1 ]; then
         echo "Usage: ${FUNCNAME[0]} <FIRMWARE_DIRECTORY>"
         return 1
     fi
 
     local FIRM_DIR="$1"
-    echo "=========================================="
-    echo "   Preparing Workspace Partitions        "
-    echo "=========================================="
+    local MODEL="$STOCK_DEVICE"
+    local SUPER_FILE="$FIRM_DIR/$MODEL/super.img"
 
-    # Limpiar cualquier residuo de directorios previos para evitar mezclas corruptas
-    for part in system system_ext product odm; do
-        if [ -d "$FIRM_DIR/$part" ]; then
-            echo "- Cleaning old directory: $FIRM_DIR/$part"
-            rm -rf "$FIRM_DIR/$part"
-        fi
-    done
+    echo "========================================"
+    echo "   Extracting Dynamic Partitions (LP)   "
+    echo "========================================"
 
-    # Preservar el vendor.img personalizado si existe en la raíz
-    if [ -f "$FIRM_DIR/vendor.img" ]; then
-        echo "- Keeping custom vendor track: $FIRM_DIR/vendor.img"
-    else
-        rm -rf "$FIRM_DIR/vendor"
+    if [ ! -f "$SUPER_FILE" ]; then
+        echo "⛔️ Error: super.img not found in $FIRM_DIR/$MODEL/"
+        return 1
     fi
+
+    # Instalar herramientas de desempaquetado de Android en el runner si faltan
+    if ! command -v lpunpack &> /dev/null; then
+        echo "- 🔧 Installing android-sdk-libresim (simg2img/lpunpack)..."
+        sudo apt-get update && sudo apt-get install -y android-sdk-libresim simg2img || true
+    fi
+
+    # Convertir de Android Sparse a Raw Image por seguridad (exigido por lpunpack)
+    if simg2img "$SUPER_FILE" "$FIRM_DIR/$MODEL/super.raw.img" 2>/dev/null; then
+        echo "- ✅ Converted sparse super.img to raw."
+        local READY_SUPER="$FIRM_DIR/$MODEL/super.raw.img"
+    else
+        echo "- ℹ️ super.img is already a raw image."
+        local READY_SUPER="$SUPER_FILE"
+    fi
+
+    # Crear los directorios destino planos que el config del script espera encontrar
+    mkdir -p "$FIRM_DIR/system" "$FIRM_DIR/vendor" "$FIRM_DIR/product" "$FIRM_DIR/system_ext" "$FIRM_DIR/odm"
+
+    # Desempaquetar el super usando lpunpack directamente en la raíz de FIRMWARE
+    echo "- 🔓 Unpacking partitions via lpunpack..."
+    lpunpack "$READY_SUPER" "$FIRM_DIR/"
+
+    # Limpieza inmediata de imágenes pesadas para no saturar el almacenamiento de Actions
+    rm -f "$FIRM_DIR/$MODEL/super.raw.img" 2>/dev/null || true
+    rm -rf "$FIRM_DIR/$MODEL"
+
+    echo "- ✅ Extraction complete. Individual partition images generated in FIRM_DIR."
 }
 
-EXTRACT_FIRMWARE_IMG() {
+
+PREPARE_PARTITIONS() {
     if [ "$#" -ne 1 ]; then
+        echo "Usage: ${FUNCNAME[0]} <EXTRACTED_FIRM_DIR>"
+        return 1
+    fi
+
+    local EXTRACTED_FIRM_DIR="$1"
+
+    [[ -z "$EXTRACTED_FIRM_DIR" || ! -d "$EXTRACTED_FIRM_DIR" ]] && {
+        echo "Invalid directory: $EXTRACTED_FIRM_DIR"
+        return 1
+    }
+
+    IFS=',' read -r -a KEEP <<< "$BUILD_PARTITIONS"
+
+    for i in "${!KEEP[@]}"; do
+        KEEP[$i]=$(echo "${KEEP[$i]}" | xargs)
+    done
+
+    echo ""
+    echo "Preparing partitions."
+
+    shopt -s nullglob dotglob
+
+    for item in "$EXTRACTED_FIRM_DIR"/*; do
+        base=$(basename "$item")
+
+        [[ "$base" == *.img ]] && base="${base%.img}"
+
+        keep_this=0
+        for k in "${KEEP[@]}"; do
+            [[ "$k" == "$base" ]] && keep_this=1 && break
+        done
+
+        if [[ $keep_this -eq 0 ]]; then
+            # echo "- Deleting: $item"
+            rm -rf -- "$item"
+        else
+            echo "- Keeping: $item"
+        fi
+    done
+
+    shopt -u nullglob dotglob
+}
+
+
+EXTRACT_FIRMWARE_IMG() {
+    echo ""
+	if [ "$#" -ne 1 ]; then
         echo "Usage: ${FUNCNAME[0]} <FIRMWARE_DIRECTORY>"
         return 1
     fi
 
-    local FIRM_DIR="$1"
-    echo "=========================================="
-    echo "   Processing and Extracting Images       "
-    echo "=========================================="
+	local FIRM_DIR="$1"
 
-    # --- [PASO 1] DETECTAR Y DESEMPAQUETAR SUPER.IMG (GoFile Link) ---
-    local SUPER_PATH=""
-    if [ -f "$FIRM_DIR/super.img" ]; then
-        SUPER_PATH="$FIRM_DIR/super.img"
-    elif [ -f "$FIRM_DIR/$STOCK_DEVICE/super.img" ]; then
-        SUPER_PATH="$FIRM_DIR/$STOCK_DEVICE/super.img"
-    fi
+	echo "Extracting images from $FIRM_DIR"
+    for imgfile in "$FIRM_DIR"/*.img; do
+        [ -e "$imgfile" ] || continue
 
-    if [ -n "$SUPER_PATH" ]; then
-        echo "- 🔓 super.img detected! Preparing lpunpack environment..."
-        
-        # Instalar dependencias nativas en el runner de GitHub Actions
-        if ! command -v lpunpack &> /dev/null; then
-            echo "  -> Installing android-sdk-libresim & simg2img..."
-            sudo apt-get update && sudo apt-get install -y android-sdk-libresim simg2img || true
-        fi
-
-        # Convertir de Android Sparse a Raw Image (Requisito estricto de lpunpack)
-        if simg2img "$SUPER_PATH" "$FIRM_DIR/super.raw.img" 2>/dev/null; then
-            echo "  -> Converted sparse super.img to raw chunk successfully."
-            local READY_SUPER="$FIRM_DIR/super.raw.img"
-        else
-            echo "  -> super.img is already a raw image chunk."
-            local READY_SUPER="$SUPER_PATH"
-        fi
-
-        # Desempaquetar particiones dinámicas (.img individuales) en la raíz de FIRMWARE
-        echo "- 🔓 Unpacking dynamic logical tracks via lpunpack..."
-        lpunpack "$READY_SUPER" "$FIRM_DIR/"
-        
-        # Limpieza inmediata del super procesado para evitar caídas por falta de espacio en Actions
-        rm -f "$FIRM_DIR/super.raw.img" 2>/dev/null || true
-        rm -f "$FIRM_DIR/super.img" 2>/dev/null || true
-        rm -rf "$FIRM_DIR/$STOCK_DEVICE" 2>/dev/null || true
-        echo "- ✅ Dynamic partition images successfully extracted to root."
-    fi
-
-    # --- [PASO 2] EXTRACCIÓN MEDIANTE IMGEXTRACTOR.PY ---
-    # Este bucle ahora procesará de forma secuencial: vendor.img, system.img, product.img, system_ext.img, odm.img
-    for img in "$FIRM_DIR"/*.img; do
-        [ -f "$img" ] || continue
-        
-        local name=$(basename "$img" .img)
-        
-        # Ignorar imágenes residuales o de control del super
-        if [ "$name" = "super" ] || [ "$name" = "super.raw" ]; then
+        if [[ "$(basename "$imgfile")" == "boot.img" ]]; then
             continue
         fi
+        
+        (
+            local partition
+            local fstype
+            local IMG_SIZE
 
-        echo "------------------------------------------"
-        echo "Processing track: $img"
-        
-        # Análisis de cabeceras e identificación del sistema de archivos (Tu lógica original)
-        local size=$(wc -c < "$img")
-        local type="unknown"
-        if HEADER=$(head -c 1024 "$img" 2>/dev/null); then
-            if echo "$HEADER" | grep -q "CrAU"; then
-                type="erofs"
-            elif echo "$HEADER" | grep -q -E "Linux|EXT"; then
-                type="ext4"
-            fi
-        fi
-        echo "$img | Detected filesystem: $type | Size: $size bytes."
+            partition="$(basename "${imgfile%.img}")"
+            fstype=$(file -b $imgfile | awk '{print $1}')
 
-        echo "- Extracting $img into target directory: $FIRM_DIR/$name"
-        rm -rf "$FIRM_DIR/$name"
-        mkdir -p "$FIRM_DIR/$name"
-        
-        # Invocar a tu extractor de Python nativo
-        python3 bin/imgextractor/imgextractor.py "$img" "$FIRM_DIR/$name" > /dev/null 2>&1
-        
-        # Eliminar el archivo .img de origen para liberar espacio crítico en el almacenamiento virtual
-        rm -f "$img"
-        echo "- ✅ Extracted successfully."
+            case "$fstype" in
+                Linux)
+                    IMG_SIZE=$(stat -c%s -- "$imgfile")
+                    echo "$imgfile Detected ext4. Size: $IMG_SIZE bytes."
+                    echo "Extracting $imgfile in $FIRM_DIR/$partition"
+                    sudo python3 $(pwd)/bin/py_scripts/imgextractor.py "$imgfile" "$FIRM_DIR" > /dev/null 2>&1
+                    ;;
+                EROFS)
+                    echo ""
+                    IMG_SIZE=$(stat -c%s -- "$imgfile")
+                    echo "$imgfile Detected $fstype. Size: $IMG_SIZE bytes."
+                    echo "Extracting $imgfile in $FIRM_DIR/$partition"
+                    $(pwd)/bin/erofs-utils/extract.erofs -i "$imgfile" -x -f -o "$FIRM_DIR" >/dev/null 2>&1
+                    ;;
+                *)
+                    echo "[$imgfile] Unknown filesystem type ($fstype), skipping"
+                    ;;
+            esac
+        ) &
     done
 
-    echo "=========================================="
-    echo "   Tree Verification (System-As-Root)    "
-    echo "=========================================="
-    
-    # Validación inteligente: Confirmar que la estructura nativa de System-As-Root se mantiene intacta
-    if [ -d "$FIRM_DIR/system/system" ]; then
-        echo "- ✅ Structure 'FIRMWARE/system/system' confirmed and protected."
-        echo "  -> Real root files inside: $(ls -A "$FIRM_DIR/system/system" | head -n 5)..."
-    else
-        echo "- ⚠️ Warning: 'system/system' structure was not created by the extractor."
-    fi
-
-    echo "- ✅ All firmware tree components extracted and aligned with variables."
+    wait
+    # Remove all original .img
+    rm -rf "$FIRM_DIR"/*.img
 }
