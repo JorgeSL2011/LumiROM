@@ -30,10 +30,10 @@ DOWNLOAD_FIRMWARE() {
     fi
 
     # --- Descarga directa desde GoFile ---
-    echo -e "- 📥 Downloading super.img via aria2c..."
+    echo -e "- 📥 Downloading super.img via curl..."
     # Forzamos el nombre de salida a super.img sin importar los IDs de la URL
-    aria2c -x 16 -s 16 -k 1M -d "$DOWN_DIR" -o "super.img" \
-        --allow-overwrite=true --auto-file-renaming=false "$GOFILE_URL"
+    # Cambiar el aria2c por esto en tu DOWNLOAD_FIRMWARE:
+	curl -L -H "User-Agent: Mozilla/5.0" "$GOFILE_URL" -o "${DOWN_DIR}/super.img"
 
     if [ $? -ne 0 ]; then
         echo -e "- ⛔️ GoFile Download failed. Verify if the direct token expired."
