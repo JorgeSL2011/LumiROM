@@ -24,7 +24,7 @@ DOWNLOAD_FIRMWARE() {
     fi
 
     # --- EXTRACCIÓN DIRECTA DE LOS .IMG SUELTOS ---
-    if [ -f "$DOWN_DIR/particiones.zip" ]; then
+    if [ -f "$DOWN_DIR/super.img" ]; then
         echo "- Download complete, downloaded on $DOWN_DIR..."
     else
         echo "Failed to Download"
