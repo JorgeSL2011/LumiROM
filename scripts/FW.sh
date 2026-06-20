@@ -18,23 +18,16 @@ DOWNLOAD_FIRMWARE() {
     
     echo "- 📥 Descargando particiones.zip comprimido..."
     if command -v aria2c &> /dev/null; then
-        aria2c -x 16 -s 16 -k 5M -d "$DOWN_DIR" -o "particiones.zip" --allow-overwrite=true "$HF_ZIP_URL"
+        aria2c -x 16 -s 16 -k 5M -d "$DOWN_DIR" -o "super.img" --allow-overwrite=true "$HF_ZIP_URL"
     else
-        curl -L "$HF_ZIP_URL" -o "$DOWN_DIR/particiones.zip"
+        curl -L "$HF_ZIP_URL" -o "$DOWN_DIR/super.img"
     fi
 
     # --- EXTRACCIÓN DIRECTA DE LOS .IMG SUELTOS ---
     if [ -f "$DOWN_DIR/particiones.zip" ]; then
-        echo "- 🗜️ Descomprimiendo imágenes lógicas (.img) directamente en $DOWN_DIR..."
-        
-        # Extraemos todos los .img sueltos directo en la carpeta base de compilación
-        7z x "$DOWN_DIR/particiones.zip" -o"$DOWN_DIR" -y > /dev/null
-        rm -f "$DOWN_DIR/particiones.zip"
-        
-        echo "📋 Contenido listo para el port en $DOWN_DIR/:"
-        ls -lh "$DOWN_DIR"/*.img
+        echo "- Download complete, downloaded on $DOWN_DIR..."
     else
-        echo "❌ Error crítico: No se pudo descargar el archivo particiones.zip"
+        echo "Failed to Download"
         exit 1
     fi
 }
