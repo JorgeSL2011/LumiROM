@@ -1,14 +1,14 @@
 #!/bin/bash
 
 DOWNLOAD_FIRMWARE() {
-    if [ "$#" -ne 1 ]; then
-        echo "Usage: ${FUNCNAME[0]} <FIRMWARE_DIRECTORY>"
+    if [ "$#" -ne 2 ]; then
+        echo "Usage: ${FUNCNAME[0]} <FIRMWARE_DIRECTORY>" "HF_URL"
         return 1
     fi
 
     local DOWN_DIR="$1"
     # Apuntamos al nuevo archivo particiones.zip en tu Hugging Face
-    local HF_ZIP_URL="https://huggingface.co/datasets/Jooseph2011/Firmware/resolve/main/particiones.zip?download=true"
+    local HF_ZIP_URL="$2"
 
     echo "========================================"
     echo "  LumiROM Logical Partitions Receiver   "
