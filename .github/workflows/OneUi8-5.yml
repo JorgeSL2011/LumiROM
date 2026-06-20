@@ -98,6 +98,7 @@ jobs:
         source scripts/FW.sh
         source "$DEVICES_DIR/$STOCK_DEVICE/config"
         DOWNLOAD_FIRMWARE "FIRMWARE" "${{ github.event.inputs.FIRMWARE_URL }}"
+        EXTRACT_FIRMWARE "FIRMWARE"
 
 
     - name: Download vendor for ${{ github.event.inputs.STOCK_DEVICE }}
